@@ -5,7 +5,5 @@ PyMuPDF
 sentence-transformers==3.1.1
 faiss-cpu
 numpy==1.26.4
-scipy==1.11.4
-python-multipart==0.0.9
 python-dotenv==1.0.1
 huggingface-hub==0.24.6

@@ -1,9 +1,13 @@
 {
-  "pdf_path": "C:\\Users\\Dharani\\Desktop\\Dharani\\Fulltime\\backend\\data\\uploaded_manual.pdf",
+  "pdf_path": "C:\\Users\\Dharani\\Desktop\\Dharani\\Fulltime\\backend\\data\\draft-oasis-e1-manual-04-28-2024.pdf",
   "pages": 287,
   "sections": 287,
   "chunks": 2751,
   "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "sections_path": "./storage\\sections.jsonl",
+  "chunks_path": "./storage\\chunks.jsonl",
   "embeddings": 2751,
-  "faiss_index": "C:\\Users\\Dharani\\Desktop\\Dharani\\Fulltime\\backend\\storage\\index.faiss"
+  "faiss_index": "C:\\Users\\Dharani\\Desktop\\Dharani\\Fulltime\\backend\\storage\\index.faiss",
+  "faiss_index_sections": "C:\\Users\\Dharani\\Desktop\\Dharani\\Fulltime\\backend\\storage\\index_sections.faiss",
+  "sections_embedded": 287
 }

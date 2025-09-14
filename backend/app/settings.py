@@ -27,9 +27,7 @@ class Settings:
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
     EMBEDDING_DIM: Optional[int] = None  # inferred at runtime
 
-    # Reranker (optional)
-    RERANK: bool = os.getenv("RERANK", "true").lower() in {"1", "true", "yes"}
-    RERANK_MODEL_NAME: str = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
+    # Reranker removed for slim build
 
     # LLM (optional; Hugging Face Inference only)
     USE_LLM: bool = os.getenv("USE_LLM", "true").lower() in {"1", "true", "yes"}

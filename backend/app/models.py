@@ -37,10 +37,6 @@ class QueryResponse(BaseModel):
     debug: Optional[Dict[str, Any]] = None
 
 
-class SearchResponse(BaseModel):
-    results: List[Citation]
-
-
 class StatsResponse(BaseModel):
     chunks: int
     sections: int

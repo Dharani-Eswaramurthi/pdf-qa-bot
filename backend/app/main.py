@@ -6,12 +6,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .settings import settings
-from .models import IngestResponse, QueryRequest, QueryResponse, Citation, SearchResponse, StatsResponse
+from .models import IngestResponse, QueryRequest, QueryResponse, Citation, StatsResponse
 from .ingest import ingest_pdf
 from .retriever import VectorStore
 from .qa import generate_answer
 from .qa import generate_quiz_question, validate_user_answer
 from .qa import generate_hypothetical_answer
+from .indexer import indexer
 
 
 app = FastAPI(title="Manual Q&A RAG", version="0.1.0")
@@ -31,17 +32,26 @@ def health():
 
 @app.post("/ingest", response_model=IngestResponse)
 async def ingest(path: Optional[str] = None):
-    pdf_path = path
-
-    info = ingest_pdf(pdf_path)
-    # Build vector index
-    vs = VectorStore()
-    vs.build()
-
+    pdf_path = path or settings.DEFAULT_PDF_PATH
+    # Start indexing in background; do not block
+    indexer.start(pdf_path)
+    # Best-effort meta
+    pages = sections = chunks = 0
+    meta_path = os.path.join(settings.STORAGE_DIR, "meta.json")
+    if os.path.isfile(meta_path):
+        import json
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                m = json.load(f)
+            pages = int(m.get("pages", 0))
+            sections = int(m.get("sections", 0))
+            chunks = int(m.get("chunks", 0))
+        except Exception:
+            pass
     return IngestResponse(
-        chunks_indexed=info["chunks"],
-        sections_detected=info["sections"],
-        pages_processed=info["pages"],
+        chunks_indexed=chunks,
+        sections_detected=sections,
+        pages_processed=pages,
         storage_dir=os.path.abspath(settings.STORAGE_DIR),
     )
 
@@ -152,6 +162,10 @@ def query(req: QueryRequest):
     vs = VectorStore()
 
     # Meta intents: greeting/language
+    # If indexing in progress, notify client
+    st = indexer.status_json()
+    if st.get("status") == "indexing":
+        return JSONResponse(status_code=202, content={"status": st})
     if _is_greeting(req.question):
         return QueryResponse(answer="Hi! How can I help you with the manual?", citations=[], used_llm=False)
     lang = _language_pref(req.question)
@@ -160,11 +174,9 @@ def query(req: QueryRequest):
     if _is_model_query(req.question):
         llm = f"Hugging Face Inference • {settings.HF_PROVIDER} • {settings.HF_MODEL}"
         emb = settings.EMBEDDING_MODEL_NAME
-        rerank = f"enabled • {settings.RERANK_MODEL_NAME}" if getattr(settings, 'RERANK', False) else "disabled"
         msg = (
             f"I’m Patrick AI. Runtime details:\n"
             f"- Retrieval: sentence-transformers embeddings ({emb}) + FAISS + MMR\n"
-            f"- Reranking: {rerank}\n"
             f"- Generator: {llm}\n"
             f"I cite the manual for content answers; meta details like this come from configuration."
         )
@@ -235,8 +247,16 @@ def query(req: QueryRequest):
             use_hierarchical=settings.HIERARCHICAL_RETRIEVAL,
             section_top_k=settings.SECTION_TOP_K,
         )
+    except FileNotFoundError:
+        # Start indexing in background and notify client
+        indexer.start(settings.DEFAULT_PDF_PATH)
+        return JSONResponse(status_code=202, content={"status": indexer.status_json()})
     except Exception:
-        results = vs.search(search_q, top_k=top_k, mmr_lambda=settings.MMR_LAMBDA, mmr_candidates=settings.MMR_CANDIDATES)
+        try:
+            results = vs.search(search_q, top_k=top_k, mmr_lambda=settings.MMR_LAMBDA, mmr_candidates=settings.MMR_CANDIDATES)
+        except FileNotFoundError:
+            indexer.start(settings.DEFAULT_PDF_PATH)
+            return JSONResponse(status_code=202, content={"status": indexer.status_json()})
     # If retrieval confidence is low, ask a clarifying question instead of guessing
     try:
         top_score = max((float(r.get('score', 0.0)) for r in results), default=0.0)
@@ -270,22 +290,17 @@ def query(req: QueryRequest):
     )
 
 
-@app.get("/search", response_model=SearchResponse)
-def search(q: str, top_k: int = 5):
-    vs = VectorStore()
-    results = vs.search(q, top_k=top_k, mmr_lambda=settings.MMR_LAMBDA, mmr_candidates=settings.MMR_CANDIDATES)
-    citations = [
-        Citation(
-            chunk_id=r["id"],
-            section_title=r.get("section_title"),
-            page_start=r.get("page_start"),
-            page_end=r.get("page_end"),
-            score=float(r.get("score", 0.0)),
-            text=r.get("text", ""),
-        )
-        for r in results
-    ]
-    return SearchResponse(results=citations)
+@app.post("/index/start")
+def index_start(path: Optional[str] = None):
+    return indexer.start(path or settings.DEFAULT_PDF_PATH)
+
+
+@app.get("/index/status")
+def index_status():
+    return indexer.status_json()
+
+
+# Removed /search endpoint for a slimmer surface area
 
 
 @app.get("/stats", response_model=StatsResponse)

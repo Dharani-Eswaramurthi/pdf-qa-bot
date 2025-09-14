@@ -5,7 +5,6 @@ from typing import List, Dict, Any, Optional, Tuple, Set
 import numpy as np
 import faiss
 from sentence_transformers import SentenceTransformer
-from sentence_transformers import CrossEncoder
 
 from .settings import settings
 
@@ -24,7 +23,7 @@ class VectorStore:
         self.dim = self.model.get_sentence_embedding_dimension()
         self.index = None  # type: Optional[faiss.Index]
         self.s_index = None  # type: Optional[faiss.Index]
-        self._reranker: Optional[CrossEncoder] = None
+        self._reranker = None
 
     def _normalize(self, X: np.ndarray) -> np.ndarray:
         norms = np.linalg.norm(X, axis=1, keepdims=True) + 1e-10
@@ -52,11 +51,20 @@ class VectorStore:
                     items.append(json.loads(line))
         return items
 
-    def build(self) -> Dict[str, Any]:
+    def build(self, progress_cb=None) -> Dict[str, Any]:
         chunks = self._load_chunks()
         texts = [c["text"] for c in chunks]
-        emb = self.model.encode(texts, batch_size=64, show_progress_bar=True, convert_to_numpy=True)
-        emb = self._normalize(emb.astype("float32"))
+        # Encode in batches and report progress if callback provided
+        batch = 64
+        vecs = []
+        total = len(texts)
+        for i in range(0, total, batch):
+            part = texts[i : i + batch]
+            v = self.model.encode(part, convert_to_numpy=True)
+            vecs.append(v)
+            if progress_cb:
+                progress_cb("chunks", min(i + batch, total), total)
+        emb = self._normalize(np.vstack(vecs).astype("float32")) if total else np.zeros((0, self.dim), dtype="float32")
 
         index = faiss.IndexFlatIP(self.dim)
         index.add(emb)
@@ -71,14 +79,24 @@ class VectorStore:
         sections = self._load_sections()
         if sections:
             s_texts = [s["text"] for s in sections]
-            s_emb = self.model.encode(s_texts, batch_size=64, show_progress_bar=True, convert_to_numpy=True)
-            s_emb = self._normalize(s_emb.astype("float32"))
+            s_vecs = []
+            total_s = len(s_texts)
+            for i in range(0, total_s, batch):
+                part = s_texts[i : i + batch]
+                v = self.model.encode(part, convert_to_numpy=True)
+                s_vecs.append(v)
+                if progress_cb:
+                    progress_cb("sections", min(i + batch, total_s), total_s)
+            s_emb = self._normalize(np.vstack(s_vecs).astype("float32")) if total_s else np.zeros((0, self.dim), dtype="float32")
             s_index = faiss.IndexFlatIP(self.dim)
             s_index.add(s_emb)
             faiss.write_index(s_index, self.s_index_path)
             with open(self.s_store_path, "w", encoding="utf-8") as f:
                 for s in sections:
                     f.write(json.dumps(s, ensure_ascii=False) + "\n")
+
+        if progress_cb:
+            progress_cb("finalize", 1, 1)
 
         # Update meta
         meta = {}
@@ -182,18 +200,7 @@ class VectorStore:
             })
 
         # Optional: rerank with cross-encoder for better ordering
-        if settings.RERANK and results:
-            try:
-                if self._reranker is None:
-                    self._reranker = CrossEncoder(settings.RERANK_MODEL_NAME)
-                pairs = [(query, r["text"]) for r in results]
-                rerank_scores = self._reranker.predict(pairs)
-                for r, s in zip(results, rerank_scores):
-                    r["rerank_score"] = float(s)
-                results.sort(key=lambda x: x.get("rerank_score", x["score"]), reverse=True)
-            except Exception:
-                # If reranker fails (e.g. no model), return original order
-                pass
+        # Reranking removed for a leaner build; keeping simple similarity order
 
         return results
 
@@ -286,16 +293,6 @@ class VectorStore:
                 }
             )
 
-        if settings.RERANK and results:
-            try:
-                if self._reranker is None:
-                    self._reranker = CrossEncoder(settings.RERANK_MODEL_NAME)
-                pairs = [(query, r["text"]) for r in results]
-                rerank_scores = self._reranker.predict(pairs)
-                for r, s in zip(results, rerank_scores):
-                    r["rerank_score"] = float(s)
-                results.sort(key=lambda x: x.get("rerank_score", x["score"]), reverse=True)
-            except Exception:
-                pass
+        # Reranking removed for a leaner build
 
         return results
