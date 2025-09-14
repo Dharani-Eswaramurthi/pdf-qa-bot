@@ -1,0 +1,9 @@
+{
+  "pdf_path": "C:\\Users\\Dharani\\Desktop\\Dharani\\Fulltime\\backend\\data\\uploaded_manual.pdf",
+  "pages": 287,
+  "sections": 287,
+  "chunks": 2751,
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "embeddings": 2751,
+  "faiss_index": "C:\\Users\\Dharani\\Desktop\\Dharani\\Fulltime\\backend\\storage\\index.faiss"
+}
