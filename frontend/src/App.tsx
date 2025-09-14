@@ -127,10 +127,10 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <div className="logo" />
+        {/* <div className="logo" /> */}
         <div>
           <div className="title">Manual Q&A Bot</div>
-          <div className="subtitle">Business-grade chat over your PDF manual</div>
+          <div className="subtitle">Chat over the PDF manual</div>
         </div>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
           {info ? (
