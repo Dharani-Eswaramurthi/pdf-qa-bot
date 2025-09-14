@@ -37,3 +37,18 @@ export async function stats() {
   if (!res.ok) throw new Error('Stats failed')
   return res.json()
 }
+
+// Indexing controls
+export type IndexStatus = { status: 'idle' | 'indexing' | 'ready' | 'error'; progress: number; message: string }
+
+export async function indexStart() {
+  const res = await fetch('/api/index/start', { method: 'POST' })
+  if (!res.ok) throw new Error('Failed to start indexing')
+  return res.json()
+}
+
+export async function indexStatus(): Promise<IndexStatus> {
+  const res = await fetch('/api/index/status')
+  if (!res.ok) throw new Error('Failed to get indexing status')
+  return res.json()
+}

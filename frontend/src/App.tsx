@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { query as queryApi, ingest as ingestApi, stats as statsApi, Citation, ChatMsg } from './api'
+import { query as queryApi, ingest as ingestApi, stats as statsApi, Citation, ChatMsg, indexStart, indexStatus } from './api'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -46,8 +46,33 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [info, setInfo] = useState<any>(null)
   const endRef = useRef<HTMLDivElement>(null)
+  const [indexing, setIndexing] = useState(false)
+  const [indexProgress, setIndexProgress] = useState(0)
+  const [indexMsg, setIndexMsg] = useState('')
 
-  useEffect(() => { statsApi().then(setInfo).catch(() => setInfo(null)) }, [])
+  useEffect(() => {
+    statsApi().then(async (s) => {
+      setInfo(s)
+      if (!s.has_index) {
+        setIndexing(true)
+        try { await indexStart() } catch {}
+        const poll = async () => {
+          try {
+            const st = await indexStatus()
+            setIndexProgress(st.progress || 0)
+            setIndexMsg(st.message || '')
+            setIndexing(st.status === 'indexing')
+            if (st.status !== 'indexing') {
+              setInfo(await statsApi())
+              return
+            }
+          } catch {}
+          setTimeout(poll, 1000)
+        }
+        poll()
+      }
+    }).catch(() => setInfo(null))
+  }, [])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
   async function handleIngest() {
@@ -62,6 +87,7 @@ export default function App() {
   }
 
   async function handleAsk() {
+    if (indexing) return
     const q = question.trim()
     if (!q) return
     setQuestion('')
@@ -70,9 +96,29 @@ export default function App() {
     setLoading(true)
     try {
       const history: ChatMsg[] = messages.map(m => ({ role: m.role, content: m.content }))
-      const res = await queryApi(q, 5, undefined, history)
-      const ans: Msg = { id: crypto.randomUUID(), role: 'assistant', content: res.answer, citations: res.citations }
-      setMessages((m) => m.concat(ans))
+      const res: any = await queryApi(q, 5, undefined, history)
+      if (res?.status?.status === 'indexing') {
+        setIndexing(true)
+        setIndexProgress(res.status.progress || 0)
+        setIndexMsg(res.status.message || 'Indexing…')
+        const poll = async () => {
+          try {
+            const st = await indexStatus()
+            setIndexProgress(st.progress || 0)
+            setIndexMsg(st.message || '')
+            setIndexing(st.status === 'indexing')
+            if (st.status !== 'indexing') {
+              setInfo(await statsApi())
+              return
+            }
+          } catch {}
+          setTimeout(poll, 1000)
+        }
+        poll()
+      } else {
+        const ans: Msg = { id: crypto.randomUUID(), role: 'assistant', content: res.answer, citations: res.citations }
+        setMessages((m) => m.concat(ans))
+      }
     } catch (e: any) {
       setMessages((m) => m.concat({ id: crypto.randomUUID(), role: 'assistant', content: `Error: ${e.message || 'Failed to query'}` }))
     } finally { setLoading(false) }
@@ -97,7 +143,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="content">
+      <main className="content" aria-busy={indexing || undefined}>
         <section className="panel chat">
           <div className="messages">
             <AnimatePresence initial={false}>
@@ -152,7 +198,8 @@ export default function App() {
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
                   placeholder="Ask a question about your manual…"
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) handleAsk() }}
+                  onKeyDown={(e) => { if (!indexing && e.key === 'Enter' && !e.shiftKey) handleAsk() }}
+                  disabled={indexing}
                 />
                 <button className="sendBtn" onClick={handleAsk} disabled={loading || !question.trim()} title="Send">
                   <FiSend />
@@ -162,6 +209,15 @@ export default function App() {
           </div>
         </footer>
       </main>
+      {indexing && (
+        <div className="overlay">
+          <div className="overlayCard">
+            <div style={{ marginBottom: 10, fontWeight: 600 }}>Building the index…</div>
+            <div className="progressBar"><div style={{ width: `${Math.min(100, Math.max(0, indexProgress))}%` }} /></div>
+            <div className="muted" style={{ marginTop: 8 }}>{indexMsg || 'Preparing vectors and sections…'}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

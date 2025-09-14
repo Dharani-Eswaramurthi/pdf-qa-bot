@@ -123,3 +123,19 @@ body {
 .sendBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 .sendBtn:hover:not(:disabled) { transform: translateY(-50%) scale(1.02); filter: brightness(1.02); }
 .sendBtn:active:not(:disabled) { transform: translateY(-48%) scale(0.98); }
+
+/* Indexing overlay */
+.overlay {
+  position: fixed; inset: 0; background: rgba(247, 243, 232, 0.75); backdrop-filter: blur(4px);
+  display: grid; place-items: center; z-index: 1200;
+}
+.overlayCard {
+  width: min(560px, 92vw); background: #fcf9f0; border: 1px solid var(--border);
+  border-radius: 16px; padding: 16px; box-shadow: 0 16px 40px rgba(199,167,106,.25);
+}
+.progressBar {
+  height: 10px; background: #efe6d3; border-radius: 999px; overflow: hidden; border: 1px solid #e7decc;
+}
+.progressBar > div {
+  height: 100%; background: linear-gradient(90deg, #e2c792, #c7a76a); width: 0%; transition: width .3s ease;
+}
